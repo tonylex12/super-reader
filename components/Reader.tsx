@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
-import { View, Text, TouchableOpacity, Modal, ActivityIndicator } from "react-native";
+import { View, Text, TouchableOpacity, Modal, ActivityIndicator, TextInput } from "react-native";
 import { WebView } from "react-native-webview";
 import { Feather } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system/legacy";
@@ -9,9 +9,10 @@ interface ReaderProps {
   pdfUri: string;
   pdfName: string;
   initialPage: number;
+  initialViewMode: "original" | "text";
   theme: "light" | "dark" | "sepia" | "forest";
   onBack: () => void;
-  onPageChange: (page: number, totalPages: number) => void;
+  onPageChange: (page: number, totalPages: number, viewMode?: "original" | "text") => void;
   onThemeChange: (theme: "light" | "dark" | "sepia" | "forest") => void;
 }
 
@@ -19,6 +20,7 @@ export default function Reader({
   pdfUri,
   pdfName,
   initialPage,
+  initialViewMode,
   theme,
   onBack,
   onPageChange,
@@ -32,10 +34,12 @@ export default function Reader({
   
   const insets = useSafeAreaInsets();
 
-  const [viewMode, setViewMode] = useState<"original" | "text">("original");
+  const [viewMode, setViewMode] = useState<"original" | "text">(initialViewMode || "original");
   const [fontSize, setFontSize] = useState(18);
   const [scrollDirection, setScrollDirection] = useState<"vertical" | "horizontal">("vertical");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isPageModalOpen, setIsPageModalOpen] = useState(false);
+  const [inputPage, setInputPage] = useState("");
 
   // Ruta del archivo HTML local copiado en el Document Directory
   const viewerUrl = `${FileSystem.documentDirectory}pdf_viewer/viewer.html`;
@@ -214,14 +218,14 @@ export default function Reader({
           sendCommand("set-font-size", { fontSize });
           sendCommand("set-scroll-direction", { direction: scrollDirection });
           if (initialPage > 1) {
-            sendCommand("go-to-page", { page: initialPage });
+            sendCommand("go-to-page", { page: initialPage, behavior: "auto" });
           }
-          onPageChange(initialPage || 1, data.numPages);
+          onPageChange(initialPage || 1, data.numPages, viewMode);
           break;
         case "page-changed":
           // Omitir spam de cambio de página en logs del terminal para mantener limpia la consola
           setCurrentPage(data.page);
-          onPageChange(data.page, totalPages);
+          onPageChange(data.page, totalPages, viewMode);
           break;
         case "error":
           logMsg(`ERROR de WebView: ${data.message}`);
@@ -252,6 +256,9 @@ export default function Reader({
     if (!loading) {
       logMsg(`React Native: Cambiando modo a '${viewMode}'...`);
       sendCommand("set-mode", { mode: viewMode });
+      // Forzar salto instantáneo a la página actual en el nuevo modo para evitar desfase de altura
+      sendCommand("go-to-page", { page: currentPage, behavior: "auto" });
+      onPageChange(currentPage, totalPages, viewMode);
     }
   }, [viewMode]);
 
@@ -391,9 +398,18 @@ export default function Reader({
             <Feather name="chevron-left" size={20} color={colors.iconColor} />
           </TouchableOpacity>
 
-          <Text style={{ color: colors.text }} className="text-xs font-semibold">
-            Página {currentPage} de {totalPages}
-          </Text>
+          <TouchableOpacity 
+            onPress={() => {
+              setInputPage(currentPage.toString());
+              setIsPageModalOpen(true);
+            }} 
+            style={{ backgroundColor: 'rgba(0,0,0,0.05)' }}
+            className="px-4 py-2 rounded-xl"
+          >
+            <Text style={{ color: colors.text }} className="text-xs font-semibold">
+              Página {currentPage} de {totalPages}
+            </Text>
+          </TouchableOpacity>
 
           <TouchableOpacity
             onPress={handleNextPage}
@@ -538,6 +554,90 @@ export default function Reader({
                   );
                 })}
               </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal para ingresar página manualmente */}
+      <Modal
+        visible={isPageModalOpen}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsPageModalOpen(false)}
+      >
+        <View className="flex-1 justify-center items-center bg-black/60 px-6">
+          {/* Backdrop click to close */}
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => setIsPageModalOpen(false)}
+            className="absolute inset-0"
+          />
+
+          <View style={{ backgroundColor: colors.sheetBg, borderColor: colors.border }} className="w-full max-w-sm rounded-3xl border p-6 shadow-2xl relative z-10">
+            <Text style={{ color: colors.text }} className="font-bold text-lg text-center mb-4">
+              Ir a la página
+            </Text>
+            
+            <View className="flex-row items-center justify-center mb-6">
+              <TextInput
+                keyboardType="number-pad"
+                value={inputPage}
+                onChangeText={setInputPage}
+                placeholder={`${currentPage}`}
+                placeholderTextColor={colors.textMuted}
+                autoFocus={true}
+                selectTextOnFocus={true}
+                style={{
+                  color: colors.text,
+                  backgroundColor: 'rgba(0, 0, 0, 0.03)',
+                  borderColor: colors.border,
+                  borderWidth: 1,
+                  fontSize: 20,
+                  fontWeight: 'bold',
+                  textAlign: 'center',
+                  borderRadius: 16,
+                  width: 100,
+                  height: 50,
+                }}
+              />
+              <Text style={{ color: colors.textMuted }} className="ml-3 text-base">
+                de {totalPages}
+              </Text>
+            </View>
+
+            <View className="flex-row gap-3">
+              <TouchableOpacity
+                onPress={() => {
+                  setIsPageModalOpen(false);
+                  setInputPage("");
+                }}
+                style={{ backgroundColor: colors.buttonBg }}
+                className="flex-1 rounded-2xl py-3 items-center"
+              >
+                <Text style={{ color: colors.text }} className="font-semibold text-sm">
+                  Cancelar
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  const num = parseInt(inputPage, 10);
+                  if (!isNaN(num)) {
+                    const targetPage = Math.max(1, Math.min(totalPages, num));
+                    setCurrentPage(targetPage);
+                    sendCommand("go-to-page", { page: targetPage, behavior: "auto" });
+                  }
+                  setIsPageModalOpen(false);
+                  setInputPage("");
+                }}
+                style={{ backgroundColor: colors.accent }}
+                className="flex-1 rounded-2xl py-3 items-center"
+              >
+                <Text className="text-white font-semibold text-sm">
+                  Ir
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>

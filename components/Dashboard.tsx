@@ -10,6 +10,7 @@ export interface RecentFile {
   lastOpened: string;
   page: number;
   totalPages: number;
+  viewMode?: "original" | "text";
 }
 
 interface DashboardProps {
@@ -153,6 +154,31 @@ export default function Dashboard({
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: Math.max(insets.bottom + 24, 24) }} className="flex-1">
+        {/* Continuar Leyendo */}
+        {recentFiles.length > 0 && (
+          <TouchableOpacity
+            onPress={() => onSelectFile(recentFiles[0].uri, recentFiles[0].name)}
+            activeOpacity={0.8}
+            style={{ backgroundColor: colors.accent }}
+            className="rounded-2xl p-4 mb-5 flex-row items-center justify-between shadow-md shadow-blue-500/20"
+          >
+            <View className="flex-1 mr-4">
+              <Text className="text-white/70 text-[10px] font-bold uppercase tracking-wider mb-0.5">
+                Continuar leyendo
+              </Text>
+              <Text numberOfLines={1} className="text-white font-bold text-base mb-0.5">
+                {recentFiles[0].name}
+              </Text>
+              <Text className="text-white/90 text-xs">
+                Pág. {recentFiles[0].page} de {recentFiles[0].totalPages}
+              </Text>
+            </View>
+            <View className="bg-white/20 p-2 rounded-xl">
+              <Feather name="arrow-right" size={20} color="#FFFFFF" />
+            </View>
+          </TouchableOpacity>
+        )}
+
         {/* Banner de bienvenida / Carga principal */}
         <View style={{ backgroundColor: colors.cardBg, borderColor: colors.cardBorder }} className="rounded-3xl border p-6 mb-8 items-center">
           <Text style={{ color: colors.text }} className="text-center font-semibold text-lg">

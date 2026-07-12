@@ -319,6 +319,8 @@
     let activeRenderTasks = {};
     let observer = null;
     let textObserver = null;
+    let isJumpingToPage = null;
+    let jumpTimeout = null;
 
     // Utilidad de logs (Desactivado para producción)
     function sendLog(msg) {}
@@ -456,9 +458,6 @@
           if (entry.isIntersecting) {
             // Renderizar la página cuando entra al viewport
             renderPageCanvas(pageNum);
-            if (currentScrollDir === 'vertical') {
-              notifyPageChange(pageNum);
-            }
           } else {
             // Cancelar renderizado o vaciar canvas al salir del viewport
             clearPageCanvas(pageNum);
@@ -476,9 +475,6 @@
           const pageNum = parseInt(entry.target.dataset.page);
           if (entry.isIntersecting) {
             loadPageText(pageNum);
-            if (currentScrollDir === 'vertical') {
-              notifyPageChange(pageNum);
-            }
           }
         });
       }, {
@@ -597,6 +593,11 @@
 
         await page.render(renderContext).promise;
         delete activeRenderTasks[pageNum];
+
+        // Re-alinear si hay un salto activo para contrarrestar cambios de altura
+        if (isJumpingToPage) {
+          performScrollToPage(isJumpingToPage, 'auto');
+        }
       } catch (err) {
         sendLog(`Error renderizando página ${pageNum}: ` + err.message);
         delete activeRenderTasks[pageNum];
@@ -678,8 +679,15 @@
 
         pageTextCache[pageNum] = reconstructedText;
         textContainer.innerText = reconstructedText;
+        delete loadingPageText[pageNum];
+
+        // Re-alinear si hay un salto activo para contrarrestar cambios de altura por texto
+        if (isJumpingToPage) {
+          performScrollToPage(isJumpingToPage, 'auto');
+        }
         sendLog('Texto de página ' + pageNum + ' cargado (' + reconstructedText.length + ' chars)');
       } catch (err) {
+        delete loadingPageText[pageNum];
         sendLog(`Error extrayendo texto pág ${pageNum}: ` + err.message);
         textContainer.innerText = "[Error al extraer el texto de esta página]";
       }
@@ -731,15 +739,26 @@
       // 5. Scroll horizontal y tracking de página
       setupScrollTracking();
       
-      // Ir a la página actual al cambiar dirección o modo
-      goToPage(currentPage);
+      // Ir a la página actual al cambiar dirección o modo (usando auto para exactitud instantánea)
+      goToPage(currentPage, 'auto');
     }
 
     // Ir a una página en particular
-    function goToPage(pageNum) {
+    function goToPage(pageNum, scrollBehavior = 'smooth') {
       if (!pdfDoc || pageNum < 1 || pageNum > pdfDoc.numPages) return;
       currentPage = pageNum;
 
+      isJumpingToPage = pageNum;
+      if (jumpTimeout) clearTimeout(jumpTimeout);
+      jumpTimeout = setTimeout(() => {
+        isJumpingToPage = null;
+      }, 1000); // 1 segundo para dar tiempo a que carguen y resuelvan las alturas los wrappers asíncronos
+
+      performScrollToPage(pageNum, scrollBehavior);
+    }
+
+    // Ejecutar el scroll real recalculando las posiciones de forma inmune a variaciones de offsetParent
+    function performScrollToPage(pageNum, scrollBehavior) {
       const container = currentMode === 'original' ? 
         document.getElementById('original-view') : 
         document.getElementById('text-view');
@@ -751,19 +770,21 @@
       if (!container || !target) return;
 
       if (currentScrollDir === 'horizontal') {
+        const offsetLeft = target.getBoundingClientRect().left - container.getBoundingClientRect().left + container.scrollLeft;
         container.scrollTo({
-          left: target.offsetLeft,
-          behavior: 'smooth'
+          left: offsetLeft,
+          behavior: scrollBehavior
         });
       } else {
+        const offsetTop = target.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
         container.scrollTo({
-          top: target.offsetTop,
-          behavior: 'smooth'
+          top: offsetTop,
+          behavior: scrollBehavior
         });
       }
     }
 
-    // Configurar el scroll tracking para navegación horizontal manual (swiping)
+    // Configurar el scroll tracking para navegación horizontal y vertical
     let scrollTimeout = null;
     function setupScrollTracking() {
       const container = currentMode === 'original' ? 
@@ -773,19 +794,31 @@
       if (!container) return;
 
       container.onscroll = () => {
-        // En scroll vertical, el IntersectionObserver (observer / textObserver) maneja 
-        // el seguimiento de página activa de forma nativa, asíncrona y eficiente sin provocar layout thrashing.
-        if (currentScrollDir !== 'horizontal') return;
-
         if (scrollTimeout) clearTimeout(scrollTimeout);
         
         scrollTimeout = setTimeout(() => {
-          const scrollLeft = container.scrollLeft;
-          const width = window.innerWidth;
-          const pageNum = Math.round(scrollLeft / width) + 1;
-          
-          if (pageNum >= 1 && pageNum <= pdfDoc.numPages) {
-            notifyPageChange(pageNum);
+          if (currentScrollDir === 'horizontal') {
+            const scrollLeft = container.scrollLeft;
+            const width = window.innerWidth;
+            const pageNum = Math.round(scrollLeft / width) + 1;
+            
+            if (pageNum >= 1 && pageNum <= pdfDoc.numPages) {
+              notifyPageChange(pageNum);
+            }
+          } else {
+            // En scroll vertical, encontrar qué página está en el centro del viewport usando elementFromPoint
+            const x = window.innerWidth / 2;
+            const y = window.innerHeight / 3; // Un tercio desde la parte superior
+            const element = document.elementFromPoint(x, y);
+            if (element) {
+              const wrapper = element.closest('.page-wrapper, .text-page-wrapper');
+              if (wrapper) {
+                const pageNum = parseInt(wrapper.dataset.page);
+                if (pageNum && pageNum >= 1 && pageNum <= pdfDoc.numPages) {
+                  notifyPageChange(pageNum);
+                }
+              }
+            }
           }
         }, 100);
       };
@@ -833,7 +866,7 @@
             }
             break;
           case 'go-to-page':
-            goToPage(msg.page);
+            goToPage(msg.page, msg.behavior || 'smooth');
             break;
         }
       } catch (err) {

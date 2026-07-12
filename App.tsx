@@ -1,13 +1,12 @@
 import './global.css';
 import React, { useState, useEffect } from 'react';
-import { View, ActivityIndicator, Alert } from 'react-native';
+import { View, ActivityIndicator, Alert, StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Asset } from 'expo-asset';
 import * as SplashScreen from 'expo-splash-screen';
-import { StatusBar } from 'expo-status-bar';
 
 // Importar Componentes
 import Dashboard, { RecentFile } from './components/Dashboard';
@@ -25,6 +24,7 @@ export default function App() {
   // Estado del archivo PDF abierto
   const [selectedPdf, setSelectedPdf] = useState<{ uri: string; name: string } | null>(null);
   const [initialPage, setInitialPage] = useState(1);
+  const [initialViewMode, setInitialViewMode] = useState<'original' | 'text'>('original');
 
   // Inicializar recursos y cargar historial
   useEffect(() => {
@@ -155,26 +155,32 @@ export default function App() {
   };
 
   // Abrir lector de PDF
-  const handleOpenFile = (uri: string, name: string, pageProgress: number) => {
+  const handleOpenFile = (uri: string, name: string, pageProgress: number, viewModeProgress: 'original' | 'text' = 'original') => {
     setSelectedPdf({ uri, name });
     setInitialPage(pageProgress);
+    setInitialViewMode(viewModeProgress);
     setCurrentScreen('reader');
   };
 
   // Actualizar historial al avanzar páginas o abrir archivo
-  const handlePageChange = async (page: number, totalPages: number) => {
+  const handlePageChange = async (page: number, totalPages: number, viewMode?: 'original' | 'text') => {
     if (!selectedPdf) return;
 
     try {
       // Filtrar y actualizar el archivo actual en la lista
       const updatedHistory = recentFiles.filter(file => file.uri !== selectedPdf.uri);
       
+      // Intentar preservar el viewMode anterior si no se pasa uno nuevo
+      const existingFile = recentFiles.find(file => file.uri === selectedPdf.uri);
+      const resolvedViewMode = viewMode || existingFile?.viewMode || "original";
+
       const updatedFile: RecentFile = {
         uri: selectedPdf.uri,
         name: selectedPdf.name,
         lastOpened: new Date().toISOString(),
         page: page,
-        totalPages: totalPages
+        totalPages: totalPages,
+        viewMode: resolvedViewMode
       };
 
       // Colocar al inicio
@@ -226,19 +232,22 @@ export default function App() {
     forest: '#14241C', // forest-bg
   }[globalTheme];
 
+  const statusBarContentStyle = 
+    globalTheme === 'dark' || globalTheme === 'forest' ? 'light-content' : 'dark-content';
+
   return (
     <SafeAreaProvider>
       <View style={{ flex: 1, backgroundColor: outerBgStyle }}>
-        <StatusBar style="auto" />
+        <StatusBar barStyle={statusBarContentStyle} translucent backgroundColor="transparent" />
         
         {currentScreen === 'dashboard' ? (
           <Dashboard
             recentFiles={recentFiles}
             theme={globalTheme}
             onSelectFile={(uri, name) => {
-              // Buscar página de inicio guardada
+              // Buscar página de inicio guardada y el modo de vista anterior
               const file = recentFiles.find(f => f.uri === uri);
-              handleOpenFile(uri, name, file ? file.page : 1);
+              handleOpenFile(uri, name, file ? file.page : 1, file?.viewMode || "original");
             }}
             onPickNewFile={handlePickNewFile}
             onClearHistory={handleClearHistory}
@@ -250,6 +259,7 @@ export default function App() {
               pdfUri={selectedPdf.uri}
               pdfName={selectedPdf.name}
               initialPage={initialPage}
+              initialViewMode={initialViewMode}
               theme={globalTheme}
               onBack={() => setCurrentScreen('dashboard')}
               onPageChange={handlePageChange}
