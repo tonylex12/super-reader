@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>SuperReader PDF Viewer</title>
+  <style>
+    /* Estilos base y de reseteo */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    /* Contenedor principal */
+    #app-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    /* --- MODO ORIGINAL (CANVAS) --- */
+    #original-view {
+      width: 100%;
+      height: 100%;
+      display: none;
+      overflow: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* Original en Scroll Vertical */
+    #original-view.vertical {
+      display: block;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    /* Original en Desplazamiento Horizontal (una página por pantalla) */
+    #original-view.horizontal {
+      display: flex;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scroll-snap-type: x mandatory;
+    }
+
+    .page-wrapper {
+      position: relative;
+      margin: 10px auto;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      background-color: #fff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    #original-view.horizontal .page-wrapper {
+      margin: 0;
+      width: 100vw;
+      height: 100vh;
+      flex-shrink: 0;
+      scroll-snap-align: start;
+      box-shadow: none;
+      background-color: transparent;
+    }
+
+    .page-wrapper canvas {
+      max-width: 100%;
+      max-height: 100%;
+      display: block;
+    }
+
+    /* --- MODO TEXTO (REFLUJO) --- */
+    #text-view {
+      width: 100%;
+      height: 100%;
+      display: none;
+      -webkit-user-select: text;
+      user-select: text;
+    }
+
+    /* Texto en Scroll Vertical */
+    #text-view.vertical {
+      display: block;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 20px 24px;
+    }
+
+    /* Texto en Desplazamiento Horizontal */
+    #text-view.horizontal {
+      display: flex;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scroll-snap-type: x mandatory;
+    }
+
+    .text-page-wrapper {
+      width: 100%;
+      box-sizing: border-box;
+      line-height: 1.6;
+      min-height: 80vh; /* Evita cargas masivas simultáneas y congelamientos */
+    }
+
+    #text-view.vertical .text-page-wrapper {
+      margin-bottom: 40px;
+      border-bottom: 1px dashed rgba(128,128,128,0.2);
+      padding-bottom: 20px;
+    }
+
+    #text-view.horizontal .text-page-wrapper {
+      width: 100vw;
+      height: 100vh;
+      flex-shrink: 0;
+      scroll-snap-align: start;
+      padding: 24px 28px;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .text-content {
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 18px;
+    }
+
+    .text-page-header {
+      font-size: 12px;
+      opacity: 0.6;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 600;
+    }
+
+    /* --- TEMAS VISUALES --- */
+    /* Claro */
+    body.theme-light {
+      background-color: #FFFFFF;
+      color: #1E293B;
+    }
+    body.theme-light .page-wrapper canvas {
+      filter: none;
+    }
+
+    /* Oscuro */
+    body.theme-dark {
+      background-color: #121212;
+      color: #E2E8F0;
+    }
+    body.theme-dark .page-wrapper canvas {
+      filter: invert(0.9) hue-rotate(180deg) brightness(1.1) contrast(0.9);
+    }
+
+    /* Sepia */
+    body.theme-sepia {
+      background-color: #F4ECD8;
+      color: #4A3728;
+    }
+    body.theme-sepia .page-wrapper canvas {
+      filter: sepia(0.8) contrast(0.9) brightness(0.95) multiply;
+    }
+
+    /* Bosque */
+    body.theme-forest {
+      background-color: #14241C;
+      color: #E6EFE9;
+    }
+    body.theme-forest .page-wrapper canvas {
+      filter: sepia(0.6) hue-rotate(60deg) contrast(0.8) brightness(0.85);
+    }
+
+    /* Indicador de carga */
+    #loading-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: inherit;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+      flex-direction: column;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid rgba(128,128,128,0.2);
+      border-left-color: currentColor;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 15px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+  <script src="pdf.min.js"></script>
+</head>
+<body class="theme-light">
+
+  <div id="app-container">
+    <!-- Pantalla de carga interna -->
+    <div id="loading-overlay">
+      <div class="spinner"></div>
+      <div id="loading-text" style="font-size: 14px; opacity: 0.8;">Cargando documento...</div>
+    </div>
+
+    <!-- Vista Original (Canvases) -->
+    <div id="original-view"></div>
+
+    <!-- Vista Texto (Reflujo) -->
+    <div id="text-view"></div>
+  </div>
+
+  <script>
+    // Redireccionar logs y errores de consola a React Native para depuración
+    (function() {
+      const bufferedLogs = [];
+      function send(type, args) {
+        const msg = {
+          type: 'console',
+          consoleType: type,
+          message: Array.from(args).map(arg => {
+            if (typeof arg === 'object') {
+              try { return JSON.stringify(arg); } catch(e) { return String(arg); }
+            }
+            return String(arg);
+          }).join(' ')
+        };
+        if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+          window.ReactNativeWebView.postMessage(JSON.stringify(msg));
+        } else {
+          bufferedLogs.push(msg);
+        }
+      }
+
+      const originalLog = console.log;
+      console.log = function() {
+        originalLog.apply(console, arguments);
+      };
+      const originalError = console.error;
+      console.error = function() {
+        originalError.apply(console, arguments);
+        send('error', arguments);
+      };
+      const originalWarn = console.warn;
+      console.warn = function() {
+        originalWarn.apply(console, arguments);
+      };
+
+      window.onerror = function(message, source, lineno, colno, error) {
+        send('error', [`Global Error: ${message} at ${source}:${lineno}:${colno}`]);
+        return false;
+      };
+
+      const interval = setInterval(() => {
+        if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+          clearInterval(interval);
+          while(bufferedLogs.length > 0) {
+            window.ReactNativeWebView.postMessage(JSON.stringify(bufferedLogs.shift()));
+          }
+        }
+      }, 100);
+    })();
+
+    // Verificar si pdfjsLib está cargado correctamente
+    if (typeof pdfjsLib === 'undefined') {
+      console.error('ERROR: pdfjsLib is undefined!');
+      setTimeout(() => {
+        sendLog('ERROR: pdfjsLib is undefined! El archivo pdf.min.js no se cargó correctamente.');
+      }, 500);
+    } else {
+      // Configurar worker de PDF.js desde Base64 inyectado o archivo local
+      if (window.PDF_WORKER_BASE64) {
+        try {
+          const binaryString = atob(window.PDF_WORKER_BASE64);
+          const len = binaryString.length;
+          const bytes = new Uint8Array(len);
+          for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          const workerBlob = new Blob([bytes], { type: 'application/javascript' });
+          pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(workerBlob);
+        } catch (e) {
+          console.error('Error al inicializar worker desde Base64:', e);
+          pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js';
+        }
+      } else {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js';
+      }
+    }
+
+    let pdfDoc = null;
+    let currentMode = 'original'; // 'original' | 'text'
+    let currentTheme = 'light'; // 'light' | 'dark' | 'sepia' | 'forest'
+    let currentScrollDir = 'vertical'; // 'vertical' | 'horizontal'
+    let currentFontSize = 18; // en px
+    let currentPage = 1;
+    
+    // Almacenamiento de páginas renderizadas/extraídas
+    let pageTextCache = {};
+    let loadingPageText = {};
+    let activeRenderTasks = {};
+    let observer = null;
+    let textObserver = null;
+
+    // Utilidad de logs (Desactivado para producción)
+    function sendLog(msg) {}
+
+    // Comunicar cambio de página al componente nativo
+    function notifyPageChange(pageNum) {
+      if (currentPage !== pageNum) {
+        currentPage = pageNum;
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'page-changed',
+          page: pageNum
+        }));
+      }
+    }
+
+    // Notificar error
+    function notifyError(errStr) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        type: 'error',
+        message: errStr
+      }));
+    }
+
+    // Convertir Base64 a ArrayBuffer
+    function base64ToArrayBuffer(base64) {
+      const binaryString = atob(base64);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      return bytes.buffer;
+    }
+
+    // Cargar el documento PDF
+    async function loadPdfData(base64Data) {
+      try {
+        document.getElementById('loading-overlay').style.display = 'flex';
+        document.getElementById('loading-text').innerText = 'Abriendo PDF...';
+        
+        const arrayBuffer = base64ToArrayBuffer(base64Data);
+        pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'pdf-loaded',
+          numPages: pdfDoc.numPages
+        }));
+
+        pageTextCache = {};
+        loadingPageText = {};
+        activeRenderTasks = {};
+        
+        // Inicializar vistas
+        setupViews();
+        
+        document.getElementById('loading-overlay').style.display = 'none';
+      } catch (err) {
+        sendLog('Error al cargar PDF: ' + err.message);
+        notifyError('No se pudo abrir el archivo PDF.');
+        document.getElementById('loading-overlay').style.display = 'none';
+      }
+    }
+
+    // Cargar el documento PDF directamente desde su ruta de archivo local
+    function loadPdfFromPath(path) {
+      try {
+        document.getElementById('loading-overlay').style.display = 'flex';
+        document.getElementById('loading-text').innerText = 'Abriendo PDF...';
+        
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', path, true);
+        xhr.responseType = 'arraybuffer';
+        xhr.onload = async function() {
+          if (this.status === 200 || this.status === 0) {
+            try {
+              pdfDoc = await pdfjsLib.getDocument({ data: this.response }).promise;
+              
+              window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'pdf-loaded',
+                numPages: pdfDoc.numPages
+              }));
+
+              pageTextCache = {};
+              loadingPageText = {};
+              activeRenderTasks = {};
+              setupViews();
+              
+              document.getElementById('loading-overlay').style.display = 'none';
+            } catch (err) {
+              sendLog('Error al parsear PDF: ' + err.message);
+              notifyError('No se pudo abrir el archivo PDF.');
+              document.getElementById('loading-overlay').style.display = 'none';
+            }
+          } else {
+            sendLog('Error al cargar archivo local, status: ' + this.status);
+            notifyError('No se pudo leer el archivo de la memoria.');
+            document.getElementById('loading-overlay').style.display = 'none';
+          }
+        };
+        xhr.onerror = function() {
+          sendLog('Error de conexión local (XHR)');
+          notifyError('Error al acceder al archivo local.');
+          document.getElementById('loading-overlay').style.display = 'none';
+        };
+        xhr.send();
+      } catch (err) {
+        sendLog('Excepción en loadPdfFromPath: ' + err.message);
+        notifyError('Error inesperado al abrir el archivo.');
+        document.getElementById('loading-overlay').style.display = 'none';
+      }
+    }
+
+    // Configurar y construir los contenedores para las vistas
+    function setupViews() {
+      if (!pdfDoc) return;
+
+      const originalView = document.getElementById('original-view');
+      const textView = document.getElementById('text-view');
+
+      // Limpiar vistas existentes
+      originalView.innerHTML = '';
+      textView.innerHTML = '';
+      
+      if (observer) {
+        observer.disconnect();
+      }
+      if (textObserver) {
+        textObserver.disconnect();
+      }
+
+      // Crear IntersectionObserver para carga perezosa en vista original vertical
+      observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          const pageNum = parseInt(entry.target.dataset.page);
+          if (entry.isIntersecting) {
+            // Renderizar la página cuando entra al viewport
+            renderPageCanvas(pageNum);
+            if (currentScrollDir === 'vertical') {
+              notifyPageChange(pageNum);
+            }
+          } else {
+            // Cancelar renderizado o vaciar canvas al salir del viewport
+            clearPageCanvas(pageNum);
+          }
+        });
+      }, {
+        root: null,
+        rootMargin: '100px 0px',
+        threshold: 0.1
+      });
+
+      // Crear un único IntersectionObserver para carga perezosa de texto (Optimiza memoria y evita congelamientos)
+      textObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          const pageNum = parseInt(entry.target.dataset.page);
+          if (entry.isIntersecting) {
+            loadPageText(pageNum);
+            if (currentScrollDir === 'vertical') {
+              notifyPageChange(pageNum);
+            }
+          }
+        });
+      }, {
+        root: null,
+        rootMargin: '100px 0px',
+        threshold: 0.1
+      });
+
+      // Crear contenedores de página
+      for (let i = 1; i <= pdfDoc.numPages; i++) {
+        // Vista original (Canvas Wrapper)
+        const pageWrapper = document.createElement('div');
+        pageWrapper.id = `page-wrapper-${i}`;
+        pageWrapper.className = 'page-wrapper';
+        pageWrapper.dataset.page = i;
+        pageWrapper.style.minHeight = '300px'; // Altura mínima de respaldo
+        
+        originalView.appendChild(pageWrapper);
+        observer.observe(pageWrapper);
+
+        // Vista de texto (Reflujo Wrapper)
+        const textWrapper = document.createElement('div');
+        textWrapper.id = `text-wrapper-${i}`;
+        textWrapper.className = 'text-page-wrapper';
+        textWrapper.dataset.page = i;
+
+        const textHeader = document.createElement('div');
+        textHeader.className = 'text-page-header';
+        textHeader.innerText = `Página ${i} de ${pdfDoc.numPages}`;
+        textWrapper.appendChild(textHeader);
+
+        const textContent = document.createElement('div');
+        textContent.id = `text-content-${i}`;
+        textContent.className = 'text-content';
+        textContent.style.fontSize = `${currentFontSize}px`;
+        textContent.innerText = 'Cargando texto...';
+        textWrapper.appendChild(textContent);
+
+        textView.appendChild(textWrapper);
+        textObserver.observe(textWrapper);
+      }
+
+      applyLayoutAndStyles();
+    }
+
+    // Renderizar página en canvas
+    async function renderPageCanvas(pageNum) {
+      if (!pdfDoc || activeRenderTasks[pageNum]) return;
+
+      const wrapper = document.getElementById(`page-wrapper-${pageNum}`);
+      if (!wrapper) return;
+
+      // Si ya hay un canvas renderizado, no hacer nada
+      if (wrapper.querySelector('canvas')) return;
+
+      try {
+        activeRenderTasks[pageNum] = true;
+        
+        const page = await pdfDoc.getPage(pageNum);
+        const viewport = page.getViewport({ scale: 1.5 }); // escala por defecto para nitidez
+
+        // Ajustar wrapper a la proporción del PDF
+        const ratio = viewport.height / viewport.width;
+        
+        if (currentScrollDir === 'horizontal') {
+          // En scroll horizontal el wrapper ocupa 100vw y 100vh
+          wrapper.style.width = '100vw';
+          wrapper.style.height = '100vh';
+        } else {
+          // En scroll vertical, ajustamos el ancho del wrapper a la pantalla y mantenemos la proporción
+          const screenWidth = window.innerWidth - 20; // margen
+          wrapper.style.width = `${screenWidth}px`;
+          wrapper.style.height = `${screenWidth * ratio}px`;
+        }
+
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        
+        // Escalar el canvas basado en el wrapper real
+        const rect = wrapper.getBoundingClientRect();
+        let displayWidth, displayHeight;
+
+        if (currentScrollDir === 'horizontal') {
+          // Ajustar por altura o ancho de pantalla conservando aspecto
+          const screenRatio = window.innerHeight / window.innerWidth;
+          if (ratio > screenRatio) {
+            // El documento es más alto que la pantalla
+            displayHeight = window.innerHeight;
+            displayWidth = displayHeight / ratio;
+          } else {
+            // El documento es más ancho
+            displayWidth = window.innerWidth;
+            displayHeight = displayWidth * ratio;
+          }
+        } else {
+          displayWidth = rect.width;
+          displayHeight = rect.height;
+        }
+
+        canvas.width = displayWidth * window.devicePixelRatio;
+        canvas.height = displayHeight * window.devicePixelRatio;
+        canvas.style.width = `${displayWidth}px`;
+        canvas.style.height = `${displayHeight}px`;
+
+        const renderViewport = page.getViewport({ 
+          scale: (displayWidth / page.getViewport({ scale: 1.0 }).width) * window.devicePixelRatio 
+        });
+
+        wrapper.innerHTML = '';
+        wrapper.appendChild(canvas);
+
+        const renderContext = {
+          canvasContext: context,
+          viewport: renderViewport
+        };
+
+        await page.render(renderContext).promise;
+        delete activeRenderTasks[pageNum];
+      } catch (err) {
+        sendLog(`Error renderizando página ${pageNum}: ` + err.message);
+        delete activeRenderTasks[pageNum];
+      }
+    }
+
+    // Limpiar canvas para ahorrar memoria
+    function clearPageCanvas(pageNum) {
+      const wrapper = document.getElementById(`page-wrapper-${pageNum}`);
+      if (wrapper) {
+        wrapper.innerHTML = '';
+        // Restaurar minHeight para que el scrollbar no colapse abruptamente
+        wrapper.style.minHeight = '300px';
+      }
+    }
+
+    // Extraer y mostrar el texto de una página
+    async function loadPageText(pageNum) {
+      if (!pdfDoc) return;
+      
+      const textContainer = document.getElementById(`text-content-${pageNum}`);
+      if (!textContainer || pageTextCache[pageNum] || loadingPageText[pageNum]) return;
+
+      try {
+        loadingPageText[pageNum] = true;
+        sendLog('Cargando texto de página: ' + pageNum);
+        
+        const page = await pdfDoc.getPage(pageNum);
+        const textContent = await page.getTextContent();
+        
+        // Algoritmo optimizado de agrupación de texto para mantener líneas y párrafos
+        const lines = {};
+        for (const item of textContent.items) {
+          if (!item.str.trim()) continue;
+          const y = Math.round(item.transform[5] / 8) * 8; // agrupar en saltos de 8px
+          if (!lines[y]) lines[y] = [];
+          lines[y].push(item);
+        }
+        
+        const sortedY = Object.keys(lines).map(Number).sort((a, b) => b - a);
+        let reconstructedText = "";
+        let lastY = null;
+        
+        for (const y of sortedY) {
+          const lineItems = lines[y].sort((a, b) => a.transform[4] - b.transform[4]);
+          
+          // Deduplicar textos superpuestos (común en PDFs para simular negritas o sombras)
+          const deduplicatedItems = [];
+          for (let i = 0; i < lineItems.length; i++) {
+            const current = lineItems[i];
+            if (deduplicatedItems.length === 0) {
+              deduplicatedItems.push(current);
+              continue;
+            }
+            const last = deduplicatedItems[deduplicatedItems.length - 1];
+            const xDiff = Math.abs(current.transform[4] - last.transform[4]);
+            const isSameText = current.str.trim() === last.str.trim();
+            
+            // Si el texto es idéntico y están superpuestos en X (diferencia < 5px), se considera un duplicado de sombra/negrita
+            if (isSameText && xDiff < 5) {
+              continue;
+            }
+            deduplicatedItems.push(current);
+          }
+
+          const lineStr = deduplicatedItems.map(item => item.str).join(' ');
+          
+          if (lastY !== null && Math.abs(lastY - y) > 20) {
+            reconstructedText += "\n\n" + lineStr; // Salto de párrafo
+          } else {
+            reconstructedText += (reconstructedText ? "\n" : "") + lineStr; // Siguiente línea
+          }
+          lastY = y;
+        }
+
+        if (!reconstructedText.trim()) {
+          reconstructedText = "[Página vacía o contiene solo imágenes]";
+        }
+
+        pageTextCache[pageNum] = reconstructedText;
+        textContainer.innerText = reconstructedText;
+        sendLog('Texto de página ' + pageNum + ' cargado (' + reconstructedText.length + ' chars)');
+      } catch (err) {
+        sendLog(`Error extrayendo texto pág ${pageNum}: ` + err.message);
+        textContainer.innerText = "[Error al extraer el texto de esta página]";
+      }
+    }
+
+    // Aplicar las clases y estilos de dirección de scroll, modo y tema
+    function applyLayoutAndStyles() {
+      const originalView = document.getElementById('original-view');
+      const textView = document.getElementById('text-view');
+
+      // 1. Mostrar la vista del modo seleccionado
+      if (currentMode === 'original') {
+        originalView.style.display = currentScrollDir === 'horizontal' ? 'flex' : 'block';
+        textView.style.display = 'none';
+      } else {
+        originalView.style.display = 'none';
+        textView.style.display = currentScrollDir === 'horizontal' ? 'flex' : 'block';
+      }
+
+      // 2. Configurar clases de orientación
+      originalView.className = currentScrollDir;
+      textView.className = currentScrollDir;
+
+      // 3. Ajustar envoltorios de páginas originales si cambia la orientación
+      const wrappers = document.querySelectorAll('.page-wrapper');
+      wrappers.forEach(wrap => {
+        if (currentScrollDir === 'horizontal') {
+          wrap.style.width = '100vw';
+          wrap.style.height = '100vh';
+        } else {
+          wrap.style.width = '';
+          wrap.style.height = '';
+        }
+      });
+
+      // Solo re-renderizar la página activa actual para ajustarse al nuevo diseño/orientación,
+      // evitando re-renderizar masivamente todos los canvas del libro a la vez (lo que causaba el congelamiento)
+      if (currentMode === 'original') {
+        clearPageCanvas(currentPage);
+        renderPageCanvas(currentPage);
+      }
+
+      // 4. Ajustar fuentes
+      const textContents = document.querySelectorAll('.text-content');
+      textContents.forEach(content => {
+        content.style.fontSize = `${currentFontSize}px`;
+      });
+
+      // 5. Scroll horizontal y tracking de página
+      setupScrollTracking();
+      
+      // Ir a la página actual al cambiar dirección o modo
+      goToPage(currentPage);
+    }
+
+    // Ir a una página en particular
+    function goToPage(pageNum) {
+      if (!pdfDoc || pageNum < 1 || pageNum > pdfDoc.numPages) return;
+      currentPage = pageNum;
+
+      const container = currentMode === 'original' ? 
+        document.getElementById('original-view') : 
+        document.getElementById('text-view');
+
+      const target = currentMode === 'original' ? 
+        document.getElementById(`page-wrapper-${pageNum}`) : 
+        document.getElementById(`text-wrapper-${pageNum}`);
+
+      if (!container || !target) return;
+
+      if (currentScrollDir === 'horizontal') {
+        container.scrollTo({
+          left: target.offsetLeft,
+          behavior: 'smooth'
+        });
+      } else {
+        container.scrollTo({
+          top: target.offsetTop,
+          behavior: 'smooth'
+        });
+      }
+    }
+
+    // Configurar el scroll tracking para navegación horizontal manual (swiping)
+    let scrollTimeout = null;
+    function setupScrollTracking() {
+      const container = currentMode === 'original' ? 
+        document.getElementById('original-view') : 
+        document.getElementById('text-view');
+        
+      if (!container) return;
+
+      container.onscroll = () => {
+        // En scroll vertical, el IntersectionObserver (observer / textObserver) maneja 
+        // el seguimiento de página activa de forma nativa, asíncrona y eficiente sin provocar layout thrashing.
+        if (currentScrollDir !== 'horizontal') return;
+
+        if (scrollTimeout) clearTimeout(scrollTimeout);
+        
+        scrollTimeout = setTimeout(() => {
+          const scrollLeft = container.scrollLeft;
+          const width = window.innerWidth;
+          const pageNum = Math.round(scrollLeft / width) + 1;
+          
+          if (pageNum >= 1 && pageNum <= pdfDoc.numPages) {
+            notifyPageChange(pageNum);
+          }
+        }, 100);
+      };
+    }
+
+    // Escuchar mensajes nativos (React Native -> WebView)
+    function handleNativeMessage(event) {
+      try {
+        const msg = JSON.parse(event.data);
+        
+        switch (msg.type) {
+          case 'load-pdf':
+            loadPdfData(msg.data);
+            break;
+          case 'load-pdf-path':
+            loadPdfFromPath(msg.path);
+            break;
+          case 'set-mode':
+            sendLog('Visor procesando set-mode: ' + msg.mode);
+            if (currentMode !== msg.mode) {
+              currentMode = msg.mode;
+              applyLayoutAndStyles();
+            }
+            break;
+          case 'set-theme':
+            sendLog('Visor procesando set-theme: ' + msg.theme);
+            if (currentTheme !== msg.theme) {
+              currentTheme = msg.theme;
+              document.body.className = `theme-${msg.theme}`;
+            }
+            break;
+          case 'set-font-size':
+            if (currentFontSize !== msg.fontSize) {
+              currentFontSize = msg.fontSize;
+              const textContents = document.querySelectorAll('.text-content');
+              textContents.forEach(content => {
+                content.style.fontSize = `${currentFontSize}px`;
+              });
+            }
+            break;
+          case 'set-scroll-direction':
+            if (currentScrollDir !== msg.direction) {
+              currentScrollDir = msg.direction;
+              applyLayoutAndStyles();
+            }
+            break;
+          case 'go-to-page':
+            goToPage(msg.page);
+            break;
+        }
+      } catch (err) {
+        sendLog('Error procesando mensaje nativo: ' + err.message);
+      }
+    }
+
+    // Registrar en window (iOS) y en document (Android) para compatibilidad multiplataforma
+    window.addEventListener('message', handleNativeMessage);
+    document.addEventListener('message', handleNativeMessage);
+
+    // Notificar que la página HTML se cargó completamente y está lista
+    window.onload = () => {
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        type: 'ready'
+      }));
+    };
+  </script>
+</body>
+</html>
