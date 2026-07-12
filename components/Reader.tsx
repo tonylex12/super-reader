@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, Modal, ActivityIndicator } from "react-na
 import { WebView } from "react-native-webview";
 import { Feather } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system/legacy";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 interface ReaderProps {
   pdfUri: string;
@@ -28,6 +29,8 @@ export default function Reader({
   const [currentPage, setCurrentPage] = useState(initialPage || 1);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  
+  const insets = useSafeAreaInsets();
 
   const [viewMode, setViewMode] = useState<"original" | "text">("original");
   const [fontSize, setFontSize] = useState(18);
@@ -293,7 +296,7 @@ export default function Reader({
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* Barra de herramientas superior */}
-      <View style={{ backgroundColor: colors.headerBg, borderColor: colors.headerBorder }} className="border-b px-4 pb-4 pt-14 flex-row items-center justify-between">
+      <View style={{ backgroundColor: colors.headerBg, borderColor: colors.headerBorder, paddingTop: Math.max(insets.top, 16) }} className="border-b px-4 pb-4 flex-row items-center justify-between">
         <TouchableOpacity onPress={onBack} className="p-2 rounded-full">
           <Feather name="chevron-left" size={24} color={colors.iconColor} />
         </TouchableOpacity>
@@ -379,7 +382,7 @@ export default function Reader({
 
       {/* Barra de progreso inferior */}
       {!loading && !errorMsg && (
-        <View style={{ backgroundColor: colors.headerBg, borderColor: colors.headerBorder }} className="border-t px-6 py-4 flex-row items-center justify-between">
+        <View style={{ backgroundColor: colors.headerBg, borderColor: colors.headerBorder, paddingBottom: Math.max(insets.bottom, 16) }} className="border-t px-6 pt-4 flex-row items-center justify-between">
           <TouchableOpacity
             onPress={handlePrevPage}
             disabled={currentPage <= 1}

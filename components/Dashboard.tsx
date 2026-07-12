@@ -1,6 +1,7 @@
 import React from "react";
 import { View, Text, TouchableOpacity, ScrollView } from "react-native";
 import { Feather } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // Tipado de archivos recientes
 export interface RecentFile {
@@ -28,6 +29,7 @@ export default function Dashboard({
   onClearHistory,
   onToggleTheme,
 }: DashboardProps) {
+  const insets = useSafeAreaInsets();
   
   // Estilos de colores en crudo (hex) para evitar bugs de NativeWind v4 al inyectar clases dinámicas
   const colors = {
@@ -115,7 +117,7 @@ export default function Dashboard({
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* Cabecera */}
-      <View style={{ borderColor: colors.headerBorder }} className="border-b px-6 pb-4 pt-14 flex-row items-center justify-between">
+      <View style={{ borderColor: colors.headerBorder, paddingTop: Math.max(insets.top, 16) }} className="border-b px-6 pb-4 flex-row items-center justify-between">
         <View className="flex-row items-center">
           <Feather name="book-open" size={28} color={colors.iconColor} className="mr-3" />
           <Text style={{ color: colors.text }} className="font-bold text-2xl tracking-tight">
@@ -150,7 +152,7 @@ export default function Dashboard({
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 24 }} className="flex-1">
+      <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: Math.max(insets.bottom + 24, 24) }} className="flex-1">
         {/* Banner de bienvenida / Carga principal */}
         <View style={{ backgroundColor: colors.cardBg, borderColor: colors.cardBorder }} className="rounded-3xl border p-6 mb-8 items-center">
           <Text style={{ color: colors.text }} className="text-center font-semibold text-lg">
