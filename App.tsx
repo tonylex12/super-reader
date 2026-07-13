@@ -1,6 +1,6 @@
 import './global.css';
 import React, { useState, useEffect } from 'react';
-import { View, ActivityIndicator, Alert, StatusBar } from 'react-native';
+import { View, ActivityIndicator, StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
@@ -11,6 +11,7 @@ import * as SplashScreen from 'expo-splash-screen';
 // Importar Componentes
 import Dashboard, { RecentFile } from './components/Dashboard';
 import Reader from './components/Reader';
+import { CustomAlert, CustomAlertModal } from './components/CustomAlert';
 
 // Prevenir que la pantalla de carga nativa se oculte sola
 SplashScreen.preventAutoHideAsync();
@@ -37,7 +38,7 @@ export default function App() {
         await loadSettingsAndHistory();
       } catch (err) {
         console.error("Error durante la inicialización:", err);
-        Alert.alert("Error", "Ocurrió un error al preparar el lector local.");
+        CustomAlert.alert("Error", "Ocurrió un error al preparar el lector local.");
       } finally {
         setAppReady(true);
         // Ocultar pantalla de carga nativa
@@ -150,7 +151,7 @@ export default function App() {
       handleOpenFile(destinationUri, selectedAsset.name, 1);
     } catch (err) {
       console.error("Error seleccionando archivo:", err);
-      Alert.alert("Error", "No se pudo abrir o guardar el archivo seleccionado.");
+      CustomAlert.alert("Error", "No se pudo abrir o guardar el archivo seleccionado.");
     }
   };
 
@@ -196,7 +197,7 @@ export default function App() {
 
   // Limpiar historial de lectura
   const handleClearHistory = async () => {
-    Alert.alert(
+    CustomAlert.alert(
       "Limpiar Historial",
       "¿Estás seguro de que quieres borrar el historial de lectura? Los archivos guardados localmente en la app se mantendrán en el almacenamiento.",
       [
@@ -239,6 +240,7 @@ export default function App() {
     <SafeAreaProvider>
       <View style={{ flex: 1, backgroundColor: outerBgStyle }}>
         <StatusBar barStyle={statusBarContentStyle} translucent backgroundColor="transparent" />
+        <CustomAlertModal theme={globalTheme} />
         
         {currentScreen === 'dashboard' ? (
           <Dashboard

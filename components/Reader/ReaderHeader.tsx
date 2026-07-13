@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { THEME_COLORS, ThemeType } from "./types";
+import { PomodoroTimer } from "./PomodoroTimer";
 
 interface ReaderHeaderProps {
   pdfName: string;
@@ -34,6 +35,8 @@ export const ReaderHeader = React.memo(({
     </View>
 
     <View className="flex-row items-center">
+      <PomodoroTimer colors={colors} />
+
       <TouchableOpacity
         onPress={onToggleViewMode}
         style={{ backgroundColor: viewMode === "text" ? colors.accent : colors.buttonBg }}
