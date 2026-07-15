@@ -638,8 +638,20 @@
         }
         
         const sortedY = Object.keys(lines).map(Number).sort((a, b) => b - a);
+        
+        // Calcular el espaciado de línea típico de la página para adaptar los saltos de párrafo
+        const gaps = [];
+        for (let i = 1; i < sortedY.length; i++) {
+          gaps.push(Math.abs(sortedY[i] - sortedY[i-1]));
+        }
+        const typicalGaps = gaps.filter(g => g >= 8 && g <= 35);
+        const avgGap = typicalGaps.length > 0 
+          ? typicalGaps.reduce((sum, g) => sum + g, 0) / typicalGaps.length 
+          : 15;
+
         let reconstructedText = "";
         let lastY = null;
+        let lastLineText = "";
         
         for (const y of sortedY) {
           const lineItems = lines[y].sort((a, b) => a.transform[4] - b.transform[4]);
@@ -656,20 +668,37 @@
             const xDiff = Math.abs(current.transform[4] - last.transform[4]);
             const isSameText = current.str.trim() === last.str.trim();
             
-            // Si el texto es idéntico y están superpuestos en X (diferencia < 5px), se considera un duplicado de sombra/negrita
             if (isSameText && xDiff < 5) {
               continue;
             }
             deduplicatedItems.push(current);
           }
 
-          const lineStr = deduplicatedItems.map(item => item.str).join(' ');
+          const lineStr = deduplicatedItems.map(item => item.str).join(' ').trim();
+          if (!lineStr) continue;
           
-          if (lastY !== null && Math.abs(lastY - y) > 20) {
-            reconstructedText += "\n\n" + lineStr; // Salto de párrafo
+          if (reconstructedText === "") {
+            reconstructedText = lineStr;
           } else {
-            reconstructedText += (reconstructedText ? "\n" : "") + lineStr; // Siguiente línea
+            const prevLine = lastLineText || "";
+            const endsWithPunctuation = /[.?!:]["']?$/.test(prevLine.trim());
+            const yGap = lastY !== null ? Math.abs(lastY - y) : 0;
+            
+            // Umbrales adaptativos basados en el diseño de la página
+            const isParagraphBreak = (endsWithPunctuation && yGap > avgGap * 1.3) || (yGap > avgGap * 2.2);
+            
+            if (isParagraphBreak) {
+              reconstructedText += "\n\n" + lineStr;
+            } else {
+              // Si la línea anterior termina con un guión de separación silábica, lo removemos y unimos directamente
+              if (prevLine.endsWith("-")) {
+                reconstructedText = reconstructedText.slice(0, -1) + lineStr;
+              } else {
+                reconstructedText += " " + lineStr;
+              }
+            }
           }
+          lastLineText = lineStr;
           lastY = y;
         }
 
