@@ -4,3 +4,4 @@ export * from "./WelcomeBanner";
 export * from "./RecentFileCard";
 export * from "./EmptyHistoryState";
 export * from "./types";
+export * from "./NotesList";

@@ -12,6 +12,9 @@ interface ReaderHeaderProps {
   onBack: () => void;
   onToggleViewMode: () => void;
   onOpenSettings: () => void;
+  currentPage: number;
+  onSaveNote: (text: string, page: number) => void;
+  theme: ThemeType;
 }
 
 export const ReaderHeader = React.memo(({
@@ -22,6 +25,9 @@ export const ReaderHeader = React.memo(({
   onBack,
   onToggleViewMode,
   onOpenSettings,
+  currentPage,
+  onSaveNote,
+  theme,
 }: ReaderHeaderProps) => (
   <View style={{ backgroundColor: colors.headerBg, borderColor: colors.headerBorder, paddingTop: Math.max(insets.top, 16) }} className="border-b px-4 pb-4 flex-row items-center justify-between">
     <TouchableOpacity onPress={onBack} className="p-2 rounded-full">
@@ -35,7 +41,13 @@ export const ReaderHeader = React.memo(({
     </View>
 
     <View className="flex-row items-center">
-      <PomodoroTimer colors={colors} />
+      <PomodoroTimer 
+        colors={colors} 
+        currentPage={currentPage}
+        onSaveNote={onSaveNote}
+        pdfName={pdfName}
+        theme={theme}
+      />
 
       <TouchableOpacity
         onPress={onToggleViewMode}

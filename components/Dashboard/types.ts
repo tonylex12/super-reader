@@ -52,11 +52,16 @@ export const DASHBOARD_THEME_COLORS = {
 
 export type DashboardThemeType = keyof typeof DASHBOARD_THEME_COLORS;
 
+import { ReadingNote } from "../Notes/types";
+
 export interface DashboardProps {
   recentFiles: RecentFile[];
+  notes: ReadingNote[];
   theme: DashboardThemeType;
   onSelectFile: (uri: string, name: string) => void;
   onPickNewFile: () => void;
   onClearHistory: () => void;
   onToggleTheme: (theme: DashboardThemeType) => void;
+  onDeleteNote: (id: string) => void;
+  onRestoreComplete: (data: any) => void;
 }

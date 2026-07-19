@@ -4,19 +4,31 @@ import { Feather } from "@expo/vector-icons";
 import { THEME_COLORS, ThemeType } from "./types";
 import { CustomAlert } from "../CustomAlert";
 import { TimeInputModal } from "./TimeInputModal";
+import { ReadingNoteModal } from "../Notes";
 
 interface PomodoroTimerProps {
   colors: typeof THEME_COLORS[ThemeType];
+  currentPage: number;
+  onSaveNote: (text: string, page: number) => void;
+  pdfName: string;
+  theme: ThemeType;
 }
 
 const DEFAULT_POMODORO_DURATION = 25 * 60; // 25 minutos en segundos
 
-export const PomodoroTimer = React.memo(({ colors }: PomodoroTimerProps) => {
+export const PomodoroTimer = React.memo(({ 
+  colors,
+  currentPage,
+  onSaveNote,
+  pdfName,
+  theme,
+}: PomodoroTimerProps) => {
   const [timerDuration, setTimerDuration] = useState(DEFAULT_POMODORO_DURATION);
   const [secondsLeft, setSecondsLeft] = useState(DEFAULT_POMODORO_DURATION);
   const [isRunning, setIsRunning] = useState(false);
   const [blink, setBlink] = useState(true);
   const [isTimeModalOpen, setIsTimeModalOpen] = useState(false);
+  const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
   
   const intervalRef = useRef<any>(null);
 
@@ -31,11 +43,18 @@ export const PomodoroTimer = React.memo(({ colors }: PomodoroTimerProps) => {
             setIsRunning(false);
             if (intervalRef.current) clearInterval(intervalRef.current);
             
-            // Disparar la alerta customizada
+            // Disparar la alerta customizada con la opción de escribir nota
             CustomAlert.alert(
               "¡Tiempo de Descanso!",
-              `Has completado tu sesión de lectura de ${Math.round(timerDuration / 60)} minutos. Es hora de tomar un descanso de 5 minutos para cuidar tu salud visual.`,
+              `Has completado tu sesión de lectura de ${Math.round(timerDuration / 60)} minutos. Es hora de tomar un descanso de 5 minutos. ¿Deseas guardar una reflexión de lectura?`,
               [
+                { 
+                  text: "Escribir nota", 
+                  style: "default",
+                  onPress: () => {
+                    setIsNoteModalOpen(true);
+                  }
+                },
                 { 
                   text: "Iniciar descanso (5 min)", 
                   style: "default",
@@ -204,6 +223,20 @@ export const PomodoroTimer = React.memo(({ colors }: PomodoroTimerProps) => {
         colors={colors}
         onClose={() => setIsTimeModalOpen(false)}
         onConfirm={handleConfirmDuration}
+      />
+
+      {/* Modal para redactar nota de lectura */}
+      <ReadingNoteModal
+        visible={isNoteModalOpen}
+        pdfName={pdfName}
+        page={currentPage}
+        theme={theme}
+        onClose={() => setIsNoteModalOpen(false)}
+        onSave={(text) => {
+          onSaveNote(text, currentPage);
+          setIsNoteModalOpen(false);
+          setSecondsLeft(timerDuration);
+        }}
       />
     </View>
   );

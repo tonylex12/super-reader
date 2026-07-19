@@ -12,6 +12,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import Dashboard, { RecentFile } from './components/Dashboard';
 import Reader from './components/Reader';
 import { CustomAlert, CustomAlertModal } from './components/CustomAlert';
+import { ReadingNote } from './components/Notes';
 
 // Prevenir que la pantalla de carga nativa se oculte sola
 SplashScreen.preventAutoHideAsync();
@@ -26,6 +27,7 @@ export default function App() {
   const [selectedPdf, setSelectedPdf] = useState<{ uri: string; name: string } | null>(null);
   const [initialPage, setInitialPage] = useState(1);
   const [initialViewMode, setInitialViewMode] = useState<'original' | 'text'>('original');
+  const [notes, setNotes] = useState<ReadingNote[]>([]);
 
   // Inicializar recursos y cargar historial
   useEffect(() => {
@@ -100,6 +102,11 @@ export default function App() {
       const savedHistory = await AsyncStorage.getItem('@superreader_history');
       if (savedHistory) {
         setRecentFiles(JSON.parse(savedHistory));
+      }
+
+      const savedNotes = await AsyncStorage.getItem('@superreader_notes');
+      if (savedNotes) {
+        setNotes(JSON.parse(savedNotes));
       }
     } catch (err) {
       console.error("Error cargando historial de AsyncStorage:", err);
@@ -218,6 +225,50 @@ export default function App() {
     );
   };
 
+  // Guardar una nueva nota de lectura (asociada lógicamente por pdfName)
+  const handleSaveNote = async (text: string, page: number) => {
+    if (!selectedPdf) return;
+    try {
+      const newNote: ReadingNote = {
+        id: Date.now().toString(),
+        pdfName: selectedPdf.name,
+        date: new Date().toISOString(),
+        text: text,
+        page: page,
+      };
+      const updatedNotes = [newNote, ...notes];
+      setNotes(updatedNotes);
+      await AsyncStorage.setItem('@superreader_notes', JSON.stringify(updatedNotes));
+      CustomAlert.alert("Nota Guardada", "Tu reflexión ha sido almacenada con éxito en la pestaña 'Mis Notas'.");
+    } catch (err) {
+      console.error("Error guardando nota:", err);
+    }
+  };
+
+  // Eliminar una nota individual
+  const handleDeleteNote = async (id: string) => {
+    try {
+      const updatedNotes = notes.filter(n => n.id !== id);
+      setNotes(updatedNotes);
+      await AsyncStorage.setItem('@superreader_notes', JSON.stringify(updatedNotes));
+    } catch (err) {
+      console.error("Error eliminando nota:", err);
+    }
+  };
+
+  // Callback al restaurar una copia de seguridad con éxito
+  const handleRestoreComplete = async (backupData: any) => {
+    if (backupData.theme) {
+      setGlobalTheme(backupData.theme);
+    }
+    if (backupData.history) {
+      setRecentFiles(backupData.history);
+    }
+    if (backupData.notes) {
+      setNotes(backupData.notes);
+    }
+  };
+
   if (!appReady) {
     return (
       <View style={{ flex: 1, backgroundColor: '#121212', justifyContent: 'center', alignItems: 'center' }}>
@@ -245,6 +296,7 @@ export default function App() {
         {currentScreen === 'dashboard' ? (
           <Dashboard
             recentFiles={recentFiles}
+            notes={notes}
             theme={globalTheme}
             onSelectFile={(uri, name) => {
               // Buscar página de inicio guardada y el modo de vista anterior
@@ -254,6 +306,8 @@ export default function App() {
             onPickNewFile={handlePickNewFile}
             onClearHistory={handleClearHistory}
             onToggleTheme={handleThemeChange}
+            onDeleteNote={handleDeleteNote}
+            onRestoreComplete={handleRestoreComplete}
           />
         ) : (
           selectedPdf && (
@@ -266,6 +320,7 @@ export default function App() {
               onBack={() => setCurrentScreen('dashboard')}
               onPageChange={handlePageChange}
               onThemeChange={handleThemeChange}
+              onSaveNote={handleSaveNote}
             />
           )
         )}

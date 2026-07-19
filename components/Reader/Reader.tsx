@@ -24,6 +24,7 @@ export default function Reader({
   onBack,
   onPageChange,
   onThemeChange,
+  onSaveNote,
 }: ReaderProps) {
   const webViewRef = useRef<WebView>(null);
   const [totalPages, setTotalPages] = useState(0);
@@ -200,6 +201,9 @@ export default function Reader({
         onBack={onBack}
         onToggleViewMode={() => setViewMode(prev => prev === "original" ? "text" : "original")}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        currentPage={currentPage}
+        onSaveNote={onSaveNote}
+        theme={theme}
       />
 
       {/* 2. Contenedor del Visor WebView */}

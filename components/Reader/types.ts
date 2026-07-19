@@ -64,4 +64,5 @@ export interface ReaderProps {
   onBack: () => void;
   onPageChange: (page: number, totalPages: number, viewMode?: "original" | "text") => void;
   onThemeChange: (theme: ThemeType) => void;
+  onSaveNote: (text: string, page: number) => void;
 }
