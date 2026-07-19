@@ -32,44 +32,13 @@ export const PomodoroTimer = React.memo(({
   
   const intervalRef = useRef<any>(null);
 
-  // Efecto para controlar el decremento de los segundos
+  // 1. Efecto para controlar el decremento de los segundos en el intervalo
   useEffect(() => {
     if (isRunning) {
       intervalRef.current = setInterval(() => {
         setBlink((b) => !b);
         setSecondsLeft((prev) => {
           if (prev <= 1) {
-            // Completado
-            setIsRunning(false);
-            if (intervalRef.current) clearInterval(intervalRef.current);
-            
-            // Disparar la alerta customizada con la opción de escribir nota
-            CustomAlert.alert(
-              "¡Tiempo de Descanso!",
-              `Has completado tu sesión de lectura de ${Math.round(timerDuration / 60)} minutos. Es hora de tomar un descanso de 5 minutos. ¿Deseas guardar una reflexión de lectura?`,
-              [
-                { 
-                  text: "Escribir nota", 
-                  style: "default",
-                  onPress: () => {
-                    setIsNoteModalOpen(true);
-                  }
-                },
-                { 
-                  text: "Iniciar descanso (5 min)", 
-                  style: "default",
-                  onPress: () => {
-                    setSecondsLeft(5 * 60);
-                    setIsRunning(true);
-                  }
-                },
-                { 
-                  text: "Entendido", 
-                  style: "cancel",
-                  onPress: () => setSecondsLeft(timerDuration)
-                }
-              ]
-            );
             return 0;
           }
           return prev - 1;
@@ -84,7 +53,42 @@ export const PomodoroTimer = React.memo(({
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [isRunning, timerDuration]);
+  }, [isRunning]);
+
+  // 2. Efecto para manejar el fin de la lectura y disparar la alerta sin bloquear el ciclo de renderizado
+  useEffect(() => {
+    if (secondsLeft === 0 && isRunning) {
+      setIsRunning(false);
+      if (intervalRef.current) clearInterval(intervalRef.current);
+
+      CustomAlert.alert(
+        "¡Tiempo de Descanso!",
+        `Has completado tu sesión de lectura de ${Math.round(timerDuration / 60)} minutos. Es hora de tomar un descanso de 5 minutos. ¿Deseas guardar una reflexión de lectura?`,
+        [
+          { 
+            text: "Escribir nota", 
+            style: "default",
+            onPress: () => {
+              setIsNoteModalOpen(true);
+            }
+          },
+          { 
+            text: "Iniciar descanso (5 min)", 
+            style: "default",
+            onPress: () => {
+              setSecondsLeft(5 * 60);
+              setIsRunning(true);
+            }
+          },
+          { 
+            text: "Entendido", 
+            style: "cancel",
+            onPress: () => setSecondsLeft(timerDuration)
+          }
+        ]
+      );
+    }
+  }, [secondsLeft, isRunning, timerDuration]);
 
   // Formatear segundos a MM:SS
   const formatTime = (totalSeconds: number) => {
